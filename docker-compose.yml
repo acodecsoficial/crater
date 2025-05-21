@@ -1,62 +1,57 @@
-version: '3'
-
 services:
   app:
     build:
+      context: .
+      dockerfile: Dockerfile
       args:
         user: crater-user
         uid: 1000
-      context: ./
-      dockerfile: Dockerfile
     image: crater-php
     restart: unless-stopped
-    working_dir: /var/www/
+    working_dir: /var/www
     volumes:
       - ./:/var/www
-      - ./docker-compose/php/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini:rw,delegated
     networks:
       - crater
-
-  db:
-    image: mariadb
-    restart: always
-    volumes:
-      - db:/var/lib/mysql
-      # If you want to persist data on the host, comment the line above this one...
-      # and uncomment the line under this one.
-      #- ./docker-compose/db/data:/var/lib/mysql:rw,delegated
-    environment:
-      MYSQL_USER: crater
-      MYSQL_PASSWORD: crater
-      MYSQL_DATABASE: crater
-      MYSQL_ROOT_PASSWORD: crater
-    ports:
-      - '33006:3306'
-    networks:
-      - crater
+    expose:
+      - "9000"
+    command: >
+      sh -c "composer install --optimize-autoloader --no-interaction &&
+            php-fpm"
 
   nginx:
-    image: nginx:1.17-alpine
+    image: nginx:alpine
     restart: unless-stopped
     ports:
-      - 80:80
+      - "8081:80"
     volumes:
-      - ./:/var/www
-      - ./docker-compose/nginx:/etc/nginx/conf.d/
+      - .:/var/www
+      - ./docker-compose/nginx:/etc/nginx/conf.d
+    depends_on:
+      - app
+    networks:
+      - crater
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
     networks:
       - crater
 
   cron:
     build:
-      context: ./
-      dockerfile: ./docker-compose/cron.dockerfile
+      context: .
+      dockerfile: Dockerfile
+    entrypoint: >
+      sh -c "while true; do php artisan schedule:run >> /dev/null 2>&1; sleep 60; done"
     volumes:
-      - ./:/var/www
+      - .:/var/www
+    depends_on:
+      - app
     networks:
       - crater
-
-volumes:
-  db:
 
 networks:
   crater:
